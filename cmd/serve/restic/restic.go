@@ -29,7 +29,6 @@ var Command = &cobra.Command{
 
 func init() {
 	flags := Command.Flags()
-	flags.BoolVar(&restserver.Config.Debug, "debug", restserver.Config.Debug, "output debug messages")
 	flags.StringVar(&restserver.Config.Listen, "listen", restserver.Config.Listen, "listen address")
 	flags.StringVar(&restserver.Config.Log, "log", restserver.Config.Log, "log HTTP requests in the combined log format")
 	flags.StringVar(&restserver.Config.Path, "path", restserver.Config.Path, "data directory")
@@ -64,6 +63,9 @@ func tlsSettings() (bool, string, string, error) {
 }
 
 func serveRestic(f fs.Fs) error {
+	restserver.Config.FS = f
+	restserver.Config.Debug = fs.Config.LogLevel <= fs.LogLevelDebug
+
 	mux := restserver.NewMux()
 
 	var handler http.Handler

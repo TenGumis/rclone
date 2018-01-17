@@ -8,12 +8,14 @@ import (
 	goji "goji.io"
 
 	"github.com/gorilla/handlers"
+	"github.com/ncw/rclone/fs"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"goji.io/pat"
 )
 
 // Config struct holds program configuration.
 var Config = struct {
+	FS         fs.Fs
 	Path       string
 	Listen     string
 	Log        string
