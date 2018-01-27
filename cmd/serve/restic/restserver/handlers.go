@@ -199,14 +199,7 @@ func getRequest(w http.ResponseWriter, r *http.Request, remote string) {
 
 // saveRequest saves a request to the repository.
 func saveRequest(w http.ResponseWriter, r *http.Request, remote string) {
-	// The object mustn't already exist
-	o, err := Config.FS.NewObject(remote)
-	if err == nil {
-		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
-		return
-	}
-
-	o, err = operations.Rcat(Config.FS, remote, r.Body, time.Now())
+	o, err := operations.Rcat(Config.FS, remote, r.Body, time.Now())
 	if err != nil {
 		if Config.Debug {
 			log.Print(err)
@@ -435,6 +428,13 @@ func SaveBlob(w http.ResponseWriter, r *http.Request) {
 	remote, err := getFileRemote(r, pat.Param(r, "type"), pat.Param(r, "name"))
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// The object mustn't already exist
+	_, err = Config.FS.NewObject(remote)
+	if err == nil {
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
 		return
 	}
 
