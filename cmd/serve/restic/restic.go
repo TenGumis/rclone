@@ -65,6 +65,8 @@ func tlsSettings() (bool, string, string, error) {
 func serveRestic(f fs.Fs) error {
 	restserver.Config.FS = f
 	restserver.Config.Debug = fs.Config.LogLevel <= fs.LogLevelDebug
+	// Use fast list for restic server since we are definitely buffering all objects in memory
+	fs.Config.UseListR = true
 
 	mux := restserver.NewMux()
 

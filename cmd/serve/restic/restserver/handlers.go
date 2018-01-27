@@ -14,8 +14,8 @@ import (
 
 	"github.com/miolini/datacounter"
 	"github.com/ncw/rclone/fs"
-	"github.com/ncw/rclone/fs/list"
 	"github.com/ncw/rclone/fs/operations"
+	"github.com/ncw/rclone/fs/walk"
 	"github.com/prometheus/client_golang/prometheus"
 	"goji.io/middleware"
 	"goji.io/pat"
@@ -339,39 +339,21 @@ func ListBlobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// FIXME it might be better to replace this with a directory recursion
-	// err := walk.Walk(Config.FS, dir, true, -1, func(path string, entries fs.DirEntries, err error) error { })
-
-	items, err := list.DirSorted(Config.FS, true, dir)
-	fs.Debugf(dir, "items = %v", items)
+	var ls listItems
+	err = walk.Walk(Config.FS, dir, true, -1, func(path string, entries fs.DirEntries, err error) error {
+		if err == nil {
+			for _, entry := range entries {
+				ls.add(entry)
+			}
+		}
+		return err
+	})
 	if err != nil {
 		if Config.Debug {
 			log.Print(err)
 		}
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
-	}
-
-	var ls listItems
-	for _, i := range items {
-		if isHashed(fileType) {
-			subpath := i.Remote()
-			var subitems fs.DirEntries
-			subitems, err = list.DirSorted(Config.FS, true, subpath)
-			fs.Debugf(subpath, "subitems = %v", subitems)
-			if err != nil {
-				if Config.Debug {
-					log.Print(err)
-				}
-				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-				return
-			}
-			for _, item := range subitems {
-				ls.add(item)
-			}
-		} else {
-			ls.add(i)
-		}
 	}
 
 	data, err := json.Marshal(ls)
@@ -383,7 +365,6 @@ func ListBlobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fs.Debugf(dir, "ls = %v", ls)
 	w.Header().Set("Content-Type", "application/vnd.x.restic.rest.v2")
 
 	_, _ = w.Write(data)
