@@ -131,7 +131,39 @@ func getRequest(w http.ResponseWriter, r *http.Request, remote string) {
 	// Set content length since we know how long the object is
 	w.Header().Set("Content-Length", strconv.FormatInt(blob.Size(), 10))
 
-	file, err := blob.Open()
+	// Decode Range request if present
+	code := http.StatusOK
+	size := blob.Size()
+	var options []fs.OpenOption
+	if rangeRequest := r.Header.Get("Range"); rangeRequest != "" {
+		//fs.Debugf(nil, "Range: request %q", rangeRequest)
+		option, err := fs.ParseRangeOption(rangeRequest)
+		if err != nil {
+			if Config.Debug {
+				log.Print(err)
+			}
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		options = append(options, option)
+		offset, limit := option.Decode(blob.Size())
+		end := blob.Size() // exclusive
+		if limit >= 0 {
+			end = offset + limit
+		}
+		if end > blob.Size() {
+			end = blob.Size()
+		}
+		size = end - offset
+		// fs.Debugf(nil, "Range: offset=%d, limit=%d, end=%d, size=%d (object size %d)", offset, limit, end, size, blob.Size())
+		// Content-Range: bytes 0-1023/146515
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", offset, end-1, blob.Size()))
+		// fs.Debugf(nil, "Range: Content-Range: %q", w.Header().Get("Content-Range"))
+		code = http.StatusPartialContent
+	}
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+
+	file, err := blob.Open(options...)
 	if err != nil {
 		if Config.Debug {
 			log.Print(err)
@@ -146,10 +178,14 @@ func getRequest(w http.ResponseWriter, r *http.Request, remote string) {
 		}
 	}()
 
+	w.WriteHeader(code)
+
 	wc := datacounter.NewResponseWriterCounter(w)
 	_, err = io.Copy(wc, file)
-	//http.ServeContent(wc, r, "", time.Unix(0, 0), file)
 	if err != nil {
+		if Config.Debug {
+			log.Print(err)
+		}
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -163,7 +199,14 @@ func getRequest(w http.ResponseWriter, r *http.Request, remote string) {
 
 // saveRequest saves a request to the repository.
 func saveRequest(w http.ResponseWriter, r *http.Request, remote string) {
-	o, err := operations.Rcat(Config.FS, remote, r.Body, time.Now())
+	// The object mustn't already exist
+	o, err := Config.FS.NewObject(remote)
+	if err == nil {
+		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+		return
+	}
+
+	o, err = operations.Rcat(Config.FS, remote, r.Body, time.Now())
 	if err != nil {
 		if Config.Debug {
 			log.Print(err)
@@ -191,6 +234,7 @@ func deleteRequest(w http.ResponseWriter, r *http.Request, remote string) {
 	}
 
 	if err := o.Remove(); err != nil {
+		fs.Errorf(remote, "Delete error: %v", err)
 		if Config.Debug {
 			log.Print(err)
 		}
@@ -271,6 +315,25 @@ func DeleteConfig(w http.ResponseWriter, r *http.Request) {
 	deleteRequest(w, r, remote)
 }
 
+// listItem is an element returned for the restic v2 list response
+type listItem struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+// return type for list
+type listItems []listItem
+
+// add a DirEntry to the listItems
+func (ls *listItems) add(entry fs.DirEntry) {
+	if o, ok := entry.(fs.Object); ok {
+		*ls = append(*ls, listItem{
+			Name: path.Base(o.Remote()),
+			Size: o.Size(),
+		})
+	}
+}
+
 // ListBlobs lists all blobs of a given type in an arbitrary order.
 func ListBlobs(w http.ResponseWriter, r *http.Request) {
 	if Config.Debug {
@@ -283,7 +346,11 @@ func ListBlobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// FIXME it might be better to replace this with a directory recursion
+	// err := walk.Walk(Config.FS, dir, true, -1, func(path string, entries fs.DirEntries, err error) error { })
+
 	items, err := list.DirSorted(Config.FS, true, dir)
+	fs.Debugf(dir, "items = %v", items)
 	if err != nil {
 		if Config.Debug {
 			log.Print(err)
@@ -292,12 +359,13 @@ func ListBlobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var names []string
+	var ls listItems
 	for _, i := range items {
 		if isHashed(fileType) {
 			subpath := i.Remote()
 			var subitems fs.DirEntries
 			subitems, err = list.DirSorted(Config.FS, true, subpath)
+			fs.Debugf(subpath, "subitems = %v", subitems)
 			if err != nil {
 				if Config.Debug {
 					log.Print(err)
@@ -305,15 +373,15 @@ func ListBlobs(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 				return
 			}
-			for _, f := range subitems {
-				names = append(names, path.Base(f.Remote()))
+			for _, item := range subitems {
+				ls.add(item)
 			}
 		} else {
-			names = append(names, path.Base(i.Remote()))
+			ls.add(i)
 		}
 	}
 
-	data, err := json.Marshal(names)
+	data, err := json.Marshal(ls)
 	if err != nil {
 		if Config.Debug {
 			log.Print(err)
@@ -321,6 +389,9 @@ func ListBlobs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+
+	fs.Debugf(dir, "ls = %v", ls)
+	w.Header().Set("Content-Type", "application/vnd.x.restic.rest.v2")
 
 	_, _ = w.Write(data)
 }
