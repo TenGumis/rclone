@@ -501,6 +501,12 @@ to reduce the value so rclone moves on to a high level retry (see the
 
 Disable low level retries with `--low-level-retries 1`.
 
+### --max-deletes=N ###
+
+This tells rclone not to delete more than N files.  If more than N
+files are attempted to be deleted then a fatal error is generated and
+rclone will exit.
+
 ### --max-depth=N ###
 
 This modifies the recursion depth for all the commands except purge.
