@@ -6,7 +6,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/ncw/rclone/backend/yandex/api"
 	"github.com/ncw/rclone/fs"
 	"github.com/ncw/rclone/fs/accounting"
 	"github.com/ncw/rclone/fs/filter"
@@ -397,10 +396,10 @@ func (s *syncCopyMove) stopDeleters() {
 // have been found have been removed from dstFiles already.
 func (s *syncCopyMove) deleteFiles(checkSrcMap bool) error {
 	if accounting.Stats.Errored() {
-		fs.Errorf(s.fdst, "%v", fs.ErrorNotDeleting)
 		if fs.Config.IgnoreErrors {
 			return nil
 		} else {
+			fs.Errorf(s.fdst, "%v", fs.ErrorNotDeleting)
 			return fs.ErrorNotDeleting
 		}
 	}
@@ -432,10 +431,10 @@ func deleteEmptyDirectories(f fs.Fs, entries fs.DirEntries) error {
 		return nil
 	}
 	if accounting.Stats.Errored() {
-		fs.Errorf(f, "%v", fs.ErrorNotDeletingDirs)
 		if fs.Config.IgnoreErrors {
 			return nil
 		} else {
+			fs.Errorf(f, "%v", fs.ErrorNotDeletingDirs)
 			return fs.ErrorNotDeletingDirs
 		}
 	}

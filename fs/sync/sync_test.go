@@ -595,6 +595,12 @@ func TestSyncAfterRemovingAFileAndAddingAFileSubDirWithErrors(t *testing.T) {
 		},
 		fs.Config.ModifyWindow,
 	)
+
+	accounting.Stats.ResetCounters()
+	fs.CountError(nil)
+	fs.Config.IgnoreErrors = true
+	require.NoError(t, Sync(r.Fremote, r.Flocal))
+
 }
 
 // Sync test delete after
