@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/ncw/rclone/backend/yandex/api"
 	"github.com/ncw/rclone/fs"
 	"github.com/ncw/rclone/fs/accounting"
 	"github.com/ncw/rclone/fs/filter"
@@ -397,7 +398,11 @@ func (s *syncCopyMove) stopDeleters() {
 func (s *syncCopyMove) deleteFiles(checkSrcMap bool) error {
 	if accounting.Stats.Errored() {
 		fs.Errorf(s.fdst, "%v", fs.ErrorNotDeleting)
-		return fs.ErrorNotDeleting
+		if fs.Config.IgnoreErrors {
+			return nil
+		} else {
+			return fs.ErrorNotDeleting
+		}
 	}
 
 	// Delete the spare files
@@ -428,7 +433,11 @@ func deleteEmptyDirectories(f fs.Fs, entries fs.DirEntries) error {
 	}
 	if accounting.Stats.Errored() {
 		fs.Errorf(f, "%v", fs.ErrorNotDeletingDirs)
-		return fs.ErrorNotDeletingDirs
+		if fs.Config.IgnoreErrors {
+			return nil
+		} else {
+			return fs.ErrorNotDeletingDirs
+		}
 	}
 
 	// Now delete the empty directories starting from the longest path
